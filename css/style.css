@@ -17,6 +17,9 @@
   .animate-fadeIn {
     animation: fadeIn 0.3s ease-in-out;
   }
+  .template-card {
+    @apply border border-gray-200 rounded-lg overflow-hidden hover:border-primary cursor-pointer transition-all duration-300;
+  }
 }
 
 @keyframes fadeIn {
@@ -32,4 +35,44 @@
   background-repeat: no-repeat;
   background-position: right 0.75rem center;
   background-size: 1rem;
+}
+
+/* 模板卡片样式 */
+.template-item {
+  height: 160px;
+  background-size: cover;
+  background-position: center;
+  position: relative;
+}
+
+.template-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(transparent, rgba(0,0,0,0.7));
+  color: white;
+  padding: 8px;
+  font-size: 12px;
+}
+
+/* 文档特定样式 */
+.bank-statement {
+  font-family: 'Helvetica', Arial, sans-serif;
+}
+
+.china-utility {
+  font-family: 'SimSun', 'serif';
+}
+
+.us-utility {
+  font-family: 'Roboto', sans-serif;
+}
+
+.japanese-document {
+  font-family: 'MS Mincho', 'serif';
+}
+
+.european-document {
+  font-family: 'Arial', sans-serif;
 }

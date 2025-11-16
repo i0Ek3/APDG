@@ -3,15 +3,24 @@ const addressTypeRadios = document.querySelectorAll('input[name="addressType"]')
 const customAddressContainer = document.getElementById('customAddressContainer');
 const generateBtn = document.getElementById('generateBtn');
 const saveBtn = document.getElementById('saveBtn');
+const templateBtn = document.getElementById('templateBtn');
 const previewContainer = document.getElementById('previewContainer');
 const documentPreview = document.getElementById('documentPreview');
 const documentContent = document.getElementById('documentContent');
+const templateSelection = document.getElementById('templateSelection');
+const availableTemplates = document.getElementById('availableTemplates');
 const notification = document.getElementById('notification');
 const notificationIcon = document.getElementById('notificationIcon');
 const notificationText = document.getElementById('notificationText');
 const languageSelect = document.getElementById('languageSelect');
 const fullnameInput = document.getElementById('fullname');
 const addressInput = document.getElementById('address');
+const templateUpload = document.getElementById('templateUpload');
+const savedTemplates = document.getElementById('savedTemplates');
+const templateList = document.getElementById('templateList');
+
+// 当前选中的模板
+let selectedTemplate = null;
 
 // 设置默认日期为今天
 document.getElementById('issueDate').valueAsDate = new Date();
@@ -256,10 +265,29 @@ const countryNames = {
 // 初始化语言
 function initLanguage() {
   const lang = languageSelect.value;
+  
+  // 处理普通文本翻译
   document.querySelectorAll('[data-i18n]').forEach(el => {
     const key = el.getAttribute('data-i18n');
     if (translations[lang] && translations[lang][key]) {
       el.textContent = translations[lang][key];
+    }
+  });
+  
+  // 处理国家选项翻译
+  document.querySelectorAll('#country option[data-country]').forEach(option => {
+    const countryCode = option.getAttribute('data-country');
+    const key = `country_${countryCode}`;
+    if (translations[lang] && translations[lang][key]) {
+      option.textContent = translations[lang][key];
+    }
+  });
+  
+  // 处理证明类型选项翻译
+  document.querySelectorAll('#documentType option[data-i18n]').forEach(option => {
+    const key = option.getAttribute('data-i18n');
+    if (translations[lang] && translations[lang][key]) {
+      option.textContent = translations[lang][key];
     }
   });
   
@@ -270,6 +298,72 @@ function initLanguage() {
   // 如果已有生成的文档，更新文档内容
   if (!documentPreview.classList.contains('hidden')) {
     generateDocument(true); // 传入true表示刷新现有文档
+  }
+}
+
+// 初始化模板列表
+function initTemplates() {
+  // 清空现有模板
+  availableTemplates.innerHTML = '';
+  
+  // 添加内置模板
+  Object.keys(templatePreviews).forEach(key => {
+    const template = templatePreviews[key];
+    const templateItem = document.createElement('div');
+    templateItem.className = 'template-card';
+    templateItem.innerHTML = `
+      <div class="template-item" style="background-image: url('${template.image}')">
+        <div class="template-overlay">
+          <p>${template.name}</p>
+        </div>
+      </div>
+    `;
+    templateItem.dataset.templateId = key;
+    templateItem.addEventListener('click', () => selectTemplate(key));
+    availableTemplates.appendChild(templateItem);
+  });
+  
+  // 加载用户保存的模板
+  loadUserTemplates();
+}
+
+// 选择模板
+function selectTemplate(templateId) {
+  selectedTemplate = templateId;
+  
+  // 高亮选中的模板
+  document.querySelectorAll('.template-card').forEach(card => {
+    if (card.dataset.templateId === templateId) {
+      card.classList.add('border-primary', 'ring-2', 'ring-primary/20');
+    } else {
+      card.classList.remove('border-primary', 'ring-2', 'ring-primary/20');
+    }
+  });
+  
+  // 生成文档
+  generateDocument(false);
+  
+  // 切换到文档预览
+  showDocumentPreview();
+}
+
+// 显示文档预览
+function showDocumentPreview() {
+  documentPreview.classList.remove('hidden');
+  templateSelection.classList.add('hidden');
+  const emptyState = previewContainer.querySelector('.text-center');
+  if (emptyState) {
+    emptyState.classList.add('hidden');
+  }
+}
+
+// 显示模板选择
+function showTemplateSelection() {
+  documentPreview.classList.add('hidden');
+  templateSelection.classList.remove('hidden');
+  const emptyState = previewContainer.querySelector('.text-center');
+  if (emptyState) {
+    emptyState.classList.add('hidden');
   }
 }
 
@@ -293,6 +387,136 @@ generateBtn.addEventListener('click', () => generateDocument(false));
 
 // 保存PDF
 saveBtn.addEventListener('click', saveAsPDF);
+
+// 模板按钮点击事件
+templateBtn.addEventListener('click', showTemplateSelection);
+
+// 模板上传事件
+templateUpload.addEventListener('change', handleTemplateUpload);
+
+// 处理模板上传
+function handleTemplateUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  
+  // 检查文件类型
+  const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg'];
+  if (!allowedTypes.includes(file.type)) {
+    const lang = languageSelect.value;
+    showNotification(translations[lang].supported_formats, 'error');
+    return;
+  }
+  
+  // 读取文件并显示预览
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const lang = languageSelect.value;
+    const templateId = 'user-' + Date.now();
+    
+    // 保存到本地存储
+    const userTemplate = {
+      id: templateId,
+      name: file.name,
+      type: file.type,
+      data: e.target.result,
+      date: new Date().toISOString()
+    };
+    
+    let userTemplates = JSON.parse(localStorage.getItem('userTemplates') || '[]');
+    userTemplates.push(userTemplate);
+    localStorage.setItem('userTemplates', JSON.stringify(userTemplates));
+    
+    // 显示通知
+    showNotification(translations[lang].template_uploaded || 'Template uploaded successfully', 'success');
+    
+    // 重新加载模板列表
+    loadUserTemplates();
+    
+    // 清空输入
+    templateUpload.value = '';
+  };
+  
+  if (file.type === 'application/pdf') {
+    reader.readAsDataURL(file);
+  } else {
+    reader.readAsDataURL(file);
+  }
+}
+
+// 加载用户模板
+function loadUserTemplates() {
+  const userTemplates = JSON.parse(localStorage.getItem('userTemplates') || '[]');
+  
+  if (userTemplates.length > 0) {
+    savedTemplates.classList.remove('hidden');
+    templateList.innerHTML = '';
+    
+    userTemplates.forEach(template => {
+      const templateItem = document.createElement('div');
+      templateItem.className = 'flex items-center justify-between p-2 border border-gray-200 rounded-lg';
+      
+      let icon = 'fa-file-pdf-o';
+      if (template.type.startsWith('image/')) {
+        icon = 'fa-file-image-o';
+      }
+      
+      templateItem.innerHTML = `
+        <div class="flex items-center">
+          <i class="fa ${icon} text-primary mr-2"></i>
+          <span class="text-sm truncate max-w-[200px]">${template.name}</span>
+        </div>
+        <div class="flex items-center space-x-2">
+          <button class="text-gray-500 hover:text-primary use-template" data-id="${template.id}">
+            <i class="fa fa-check"></i>
+          </button>
+          <button class="text-gray-500 hover:text-red-500 delete-template" data-id="${template.id}">
+            <i class="fa fa-trash"></i>
+          </button>
+        </div>
+      `;
+      
+      templateList.appendChild(templateItem);
+    });
+    
+    // 添加事件监听
+    document.querySelectorAll('.use-template').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const templateId = e.target.closest('.use-template').dataset.id;
+        selectedTemplate = templateId;
+        generateDocument(false);
+        showDocumentPreview();
+      });
+    });
+    
+    document.querySelectorAll('.delete-template').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const templateId = e.target.closest('.delete-template').dataset.id;
+        deleteUserTemplate(templateId);
+      });
+    });
+  } else {
+    savedTemplates.classList.add('hidden');
+  }
+}
+
+// 删除用户模板
+function deleteUserTemplate(templateId) {
+  let userTemplates = JSON.parse(localStorage.getItem('userTemplates') || '[]');
+  userTemplates = userTemplates.filter(t => t.id !== templateId);
+  localStorage.setItem('userTemplates', JSON.stringify(userTemplates));
+  
+  // 如果删除的是当前选中的模板，清除选择
+  if (selectedTemplate === templateId) {
+    selectedTemplate = null;
+  }
+  
+  // 重新加载模板列表
+  loadUserTemplates();
+  
+  // 显示通知
+  const lang = languageSelect.value;
+  showNotification(translations[lang].template_deleted || 'Template deleted', 'info');
+}
 
 // 生成文档函数
 function generateDocument(refresh = false) {
@@ -345,62 +569,85 @@ function generateDocument(refresh = false) {
     servicePeriod = formatServicePeriod.default(lastMonth, date);
   }
 
-  // 生成文档内容
-  const documentHTML = `
-    <div class="p-8">
-      <!-- 头部 -->
-      <div class="flex justify-between items-start mb-8">
-        <div>
-          <h2 class="text-2xl font-bold text-primary mb-1">${companyName}</h2>
-          <p class="text-gray-600 text-sm">${documentName}</p>
-        </div>
-        <div class="text-right">
-          <div class="bg-primary/10 text-primary p-3 rounded-lg inline-block">
-            <i class="fa ${docInfo.icon} text-3xl"></i>
+  // 生成账单ID
+  const billId = generateRandomId();
+
+  // 准备数据对象
+  const data = {
+    fullname,
+    country,
+    address,
+    documentType,
+    issueDate,
+    formattedDate,
+    companyName,
+    documentName,
+    countryName,
+    amount,
+    currency,
+    servicePeriod,
+    billId,
+    lang,
+    icon: docInfo.icon,
+    footerNote: translations[lang].footer_note,
+    customerService: translations[lang].customer_service
+  };
+
+  // 生成文档内容 - 根据选择的模板
+  let documentHTML = '';
+  
+  // 检查是否使用用户模板
+  if (selectedTemplate && selectedTemplate.startsWith('user-')) {
+    const userTemplates = JSON.parse(localStorage.getItem('userTemplates') || '[]');
+    const userTemplate = userTemplates.find(t => t.id === selectedTemplate);
+    
+    if (userTemplate) {
+      // 对于图片模板，直接显示图片
+      if (userTemplate.type.startsWith('image/')) {
+        documentHTML = `
+          <div class="p-1 relative">
+            <img src="${userTemplate.data}" alt="Custom Template" class="w-full h-auto">
+            <div class="absolute top-4 left-4 right-4 bottom-4 overflow-auto p-4 text-white bg-black/50">
+              <p><strong>${translations[lang].fullname}:</strong> ${fullname}</p>
+              <p><strong>${translations[lang].address}:</strong> ${address}</p>
+              <p><strong>${translations[lang].issue_date}:</strong> ${formattedDate}</p>
+              <p><strong>${translations[lang].amount}:</strong> ${currency}${amount}</p>
+            </div>
           </div>
-        </div>
-      </div>
-      
-      <!-- 账单信息 -->
-      <div class="mb-8">
-        <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-gray-200">${translations[lang].bill_number}</h3>
-        <div class="grid grid-cols-2 gap-4 text-sm">
-          <div>
-            <p class="text-gray-500">${translations[lang].bill_number}</p>
-            <p class="font-medium">${generateRandomId()}</p>
+        `;
+      } else {
+        // PDF模板 - 显示提示信息
+        documentHTML = `
+          <div class="p-8 text-center">
+            <i class="fa fa-file-pdf-o text-5xl text-red-500 mb-4"></i>
+            <h3 class="text-lg font-semibold mb-2">${userTemplate.name}</h3>
+            <p class="text-sm text-gray-600 mb-4">${translations[lang].template_used}</p>
+            <div class="text-left text-sm border-t pt-4 mt-4">
+              <p class="mb-1"><strong>${translations[lang].fullname}:</strong> ${fullname}</p>
+              <p class="mb-1"><strong>${translations[lang].address}:</strong> ${address}</p>
+              <p class="mb-1"><strong>${translations[lang].issue_date}:</strong> ${formattedDate}</p>
+              <p><strong>${translations[lang].amount}:</strong> ${currency}${amount}</p>
+            </div>
           </div>
-          <div>
-            <p class="text-gray-500">${translations[lang].issue_date_label}</p>
-            <p class="font-medium">${formattedDate}</p>
-          </div>
-          <div>
-            <p class="text-gray-500">${translations[lang].service_period}</p>
-            <p class="font-medium">${servicePeriod}</p>
-          </div>
-          <div>
-            <p class="text-gray-500">${translations[lang].amount}</p>
-            <p class="font-medium text-primary">${currency}${amount}</p>
-          </div>
-        </div>
-      </div>
-      
-      <!-- 客户信息 -->
-      <div class="mb-8">
-        <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-gray-200">${translations[lang].customer_info}</h3>
-        <div class="text-sm">
-          <p class="mb-1"><span class="text-gray-500">${translations[lang].fullname}：</span><span class="font-medium">${fullname}</span></p>
-          <p class="mb-1"><span class="text-gray-500">${translations[lang].country_region}：</span><span class="font-medium">${countryName}</span></p>
-          <p><span class="text-gray-500">${translations[lang].address}：</span><span class="font-medium">${address}</span></p>
-        </div>
-      </div>
-      
-      <!-- 底部信息 -->
-      <div class="mt-12 pt-4 border-t border-gray-200 text-xs text-gray-500">
-        <p class="mb-2">${translations[lang].footer_note}</p>
-        <p>${translations[lang].customer_service}</p>
-      </div>
-    </div>
-  `;
+        `;
+      }
+    } else {
+      // 用户模板不存在，使用默认模板
+      documentHTML = templates.default.generate(data);
+    }
+  } 
+  // 使用内置模板
+  else if (selectedTemplate && templates[country] && templates[country][documentType]) {
+    documentHTML = templates[country][documentType].generate(data);
+  } 
+  // 检查是否有国家和类型匹配的模板
+  else if (templates[country] && templates[country][documentType]) {
+    documentHTML = templates[country][documentType].generate(data);
+  } 
+  // 使用默认模板
+  else {
+    documentHTML = templates.default.generate(data);
+  }
 
   // 显示文档预览
   documentContent.innerHTML = documentHTML;
@@ -518,6 +765,7 @@ window.addEventListener('scroll', () => {
 // 初始化页面
 document.addEventListener('DOMContentLoaded', () => {
   initLanguage();
+  initTemplates();
   
   // 修复自定义地址输入框显示问题
   const customRadio = document.querySelector('input[name="addressType"][value="custom"]');
